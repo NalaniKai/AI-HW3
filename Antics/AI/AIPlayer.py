@@ -100,7 +100,6 @@ class AIPlayer(Player):
         numAnts = len(currentState.inventories[currentState.whoseTurn].ants)
         while (selectedMove.moveType == BUILD and numAnts >= 3):
             selectedMove = moves[random.randint(0,len(moves) - 1)];
-            
         return selectedMove
     
     ##

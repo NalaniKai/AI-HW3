@@ -252,26 +252,33 @@ class AIPlayer(Player):
 
         next_states = [utils.getNextStateAdversarial(state, move) for move in all_moves]
 
+        current_node = Node(None, state)
+
         # Build first level of nodes
-        nodes = [Node(move, state)
+        nodes = [Node(move, state, current_node)
                  for move, state in zip(all_moves, next_states)]
 
-        for node in nodes:
-            node.score = self.score_state(state)
+        #for node in nodes:
+         #   node.score = self.score_state(state)
 
         # Analyze the subnodes for this state. nodes is modified in-place.
-        best_node = self.analyze_subnodes(state, depth_limit, nodes=nodes)
+        child = self.analyze_subnodes(state, depth_limit, current_node, nodes=nodes)
 
-        if best_node is None:
-            return Move(c.END, None, None)
+        if child.score > current_node.lower:
+            current_node.lower = child.score 
+            
+
+        #################################
+        #if best_node is None:
+         #   return Move(c.END, None, None)
 
         # If every move is bad, then just end the turn.
-        if best_node.score <= 0.01:
-            return Move(c.END, None, None)
+        #if best_node.score <= 0.01:
+         #   return Move(c.END, None, None)
 
-        return best_node.move
+        return 
 
-    def analyze_subnodes(self, state, depth_limit, nodes=None):
+    def analyze_subnodes(self, state, depth_limit, current_node, nodes=None):
         """
         analyze_subnodes: This is the recursive method. Function stack beware.
 
@@ -296,11 +303,11 @@ class AIPlayer(Player):
             next_states = [utils.getNextStateAdversarial(state, move)
                            for move in all_moves]
 
-            nodes = [Node(move, state)
+            nodes = [Node(move, state, current_node)
                      for move, state in zip(all_moves, next_states)]
 
-            for node in nodes:
-                node.score = self.score_state(state)
+            #for node in nodes:
+                #node.score = self.score_state(state)
 
         '''# Prune the bottom 4/5 of nodes by score
         nodes.sort(key=lambda node: node.score, reverse=True)
@@ -309,19 +316,41 @@ class AIPlayer(Player):
 
         # If the depth limit hasn't been reached,
         # analyze each subnode.
-        if len(nodes) > 0:
-            best_node = self.evaluate_nodes(nodes, state.whoseTurn == self.playerId)
+        if depth_limit == 0:
+            current_node.score = self.score_state(state)
+            return current_node
+
+        if state.whoseTurn == self.playerId:
+            for node in nodes:
+                if abs(node.upper - current_node.lower) > 1:
+                    dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
+                    child = self.analyze_subnodes(node.state, dtemp, node)
+                    if child.score > current_node.lower:
+                        current_node.lower = child.score
+        else:
+            for node in nodes:
+                if abs(node.lower - current_node.upper) > 1:
+                    dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
+                    child = self.analyze_subnodes(node.state, dtemp, node)
+                    if child.score < current_node.upper:
+                        current_node.upper = child.score
+
+        current_node.score = self.evaluate_nodes(nodes, state.whoseTurn == self.playerId)
+
+        return current_node
+
+            #node_value = self.evaluate_nodes(nodes, state.whoseTurn == self.playerId)
 
         ###### update lower/upper based on playerId
         ###### pruning 
         ###### depthlimit 
 
-        if depth_limit > 1:
+        '''if depth_limit > 1:
 
             dtemp = depth_limit - 1 #if best_node.move.moveType == c.END else depth_limit 
             best_node = self.analyze_subnodes(best_node.state, dtemp)
 
-            '''for node in nodes:
+            for node in nodes:
                 if node is None:
                     print("None")
                 else:
@@ -337,11 +366,11 @@ class AIPlayer(Player):
 
         # Prevent the ants form getting stuck when all moves
         # are equal.
-        random.shuffle(nodes)
+        #random.shuffle(nodes)
 
         # Return the best node.
-        if nodes != []:
-            return self.evaluate_nodes(nodes, state.whoseTurn == self.playerId)
+        #if nodes != []:
+         #   return self.evaluate_nodes(nodes, state.whoseTurn == self.playerId)
 
     def getPlacement(self, currentState):
         """
@@ -455,12 +484,12 @@ class Node(object):
 
     #__slots__ = ('move', 'state', 'score', 'parent')
 
-    def __init__(self, move, state, score=None, parent=None):
+    def __init__(self, move, state, parent=None, score=None,):
         self.move = move
         self.state = state
         self.score = score
         #if score is None:
          #   self.score = AIPlayer.score_state(state)
         self.parent = parent
-        self.lower = -2
         self.upper = 2
+        self.lower = -2
