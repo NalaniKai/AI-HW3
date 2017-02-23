@@ -34,6 +34,8 @@ class AIPlayer(Player):
             inputPlayerId - The id to give the new player (int)
         """
         super(AIPlayer, self).__init__(inputPlayerId, "Clever Name")
+        self.dLim = 3
+        self.uLim = 7#not in use
 
     #@staticmethod
     def score_state(self, state):
@@ -52,9 +54,8 @@ class AIPlayer(Player):
             state - GameState to score.
         """
         enemy_id = 1 - self.playerId #abs(state.whoseTurn - 1)
-        our_inv = utils.getCurrPlayerInventory(state)
-        enemy_inv = [
-            inv for inv in state.inventories if inv.player == enemy_id].pop()
+        our_inv = state.inventories[self.playerId]#utils.getCurrPlayerInventory(state)
+        enemy_inv = [inv for inv in state.inventories if inv.player == enemy_id].pop()
         we_win = 1.0
         enemy_win = 0.0
         our_food = our_inv.foodCount
@@ -135,7 +136,7 @@ class AIPlayer(Player):
         # Weighted ant types
         # Workers, first 3 are worth 10, the rest are penalized
         enemy_workers = [ant for ant in enemy_inv.ants if ant.type == c.WORKER]
-        if len(our_workers) <= 3:
+        if len(our_workers) <= 1:#3:
             total_points += len(our_workers) * 10  
             good_points += len(our_workers) * 10  
         else:
@@ -223,155 +224,6 @@ class AIPlayer(Player):
 
         return min(nodes, key=lambda node: node.score)
 
-    def get_best_move(self, state, depth_limit, moves=None):
-        """
-        get_best_move: Returns the best move for a given state, searching to a given
-        depth limit. Uses score_state() to find how 'good' a certain move is.
-
-        The first depth level is done here, remaining levels are done in
-        analyze_subnodes() recursively.
-
-        Parameters:
-            state - GameState to analyze
-            depth_limit - Depth limit for search
-
-        Returns:
-            Move with the best score.
-        """
-        # If we get a list of moves, just get rid of the END move(s)
-        if moves is None:
-            all_moves = [move for move in utils.listAllLegalMoves(
-                state) if move.moveType != c.END]
-        else:
-            all_moves = [move for move in moves if move.moveType != c.END]
-
-        # If there are moves left, then end the turn.
-        if len(all_moves) == 0:
-            return Move(c.END, None, None)
-            # return Node(Move(c.END, None, None), state, 0.5)
-
-        next_states = [utils.getNextStateAdversarial(state, move) for move in all_moves]
-
-        current_node = Node(None, state)
-
-        # Build first level of nodes
-        nodes = [Node(move, state, current_node)
-                 for move, state in zip(all_moves, next_states)]
-
-        #for node in nodes:
-         #   node.score = self.score_state(state)
-
-        # Analyze the subnodes for this state. nodes is modified in-place.
-        child = self.analyze_subnodes(state, depth_limit, current_node, nodes=nodes)
-
-        if child.score > current_node.lower:
-            current_node.lower = child.score 
-            
-
-        #################################
-        #if best_node is None:
-         #   return Move(c.END, None, None)
-
-        # If every move is bad, then just end the turn.
-        #if best_node.score <= 0.01:
-         #   return Move(c.END, None, None)
-
-        return 
-
-    def analyze_subnodes(self, state, depth_limit, current_node, nodes=None):
-        """
-        analyze_subnodes: This is the recursive method. Function stack beware.
-
-        Analyze each subnode of a given state to a given depth limit.
-        Update each node's score and return the highest-scoring subnode.
-
-        Parameters:
-            state - GameState to analyze
-            depth_limit - Depth limit for search
-            nodes (optional) - List of subnodes. Used if first depth
-                level is computed elsewhere (in get_best_move)
-
-        Returns:
-            Best scoring analyzed sub-node.
-        """
-        # If nodes haven't been passed, then expand the current
-        # state's subnodes.
-        if nodes != []:
-            all_moves = [move for move in utils.listAllLegalMoves(
-                state) if move.moveType != c.END]
-
-            next_states = [utils.getNextStateAdversarial(state, move)
-                           for move in all_moves]
-
-            nodes = [Node(move, state, current_node)
-                     for move, state in zip(all_moves, next_states)]
-
-            #for node in nodes:
-                #node.score = self.score_state(state)
-
-        '''# Prune the bottom 4/5 of nodes by score
-        nodes.sort(key=lambda node: node.score, reverse=True)
-        if len(nodes) > 10:
-            nodes = nodes[:len(nodes) / 5]'''
-
-        # If the depth limit hasn't been reached,
-        # analyze each subnode.
-        if depth_limit == 0:
-            current_node.score = self.score_state(state)
-            return current_node
-
-        if state.whoseTurn == self.playerId:
-            for node in nodes:
-                if abs(node.upper - current_node.lower) > 1:
-                    dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
-                    child = self.analyze_subnodes(node.state, dtemp, node)
-                    if child.score > current_node.lower:
-                        current_node.lower = child.score
-        else:
-            for node in nodes:
-                if abs(node.lower - current_node.upper) > 1:
-                    dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
-                    child = self.analyze_subnodes(node.state, dtemp, node)
-                    if child.score < current_node.upper:
-                        current_node.upper = child.score
-
-        current_node.score = self.evaluate_nodes(nodes, state.whoseTurn == self.playerId)
-
-        return current_node
-
-            #node_value = self.evaluate_nodes(nodes, state.whoseTurn == self.playerId)
-
-        ###### update lower/upper based on playerId
-        ###### pruning 
-        ###### depthlimit 
-
-        '''if depth_limit > 1:
-
-            dtemp = depth_limit - 1 #if best_node.move.moveType == c.END else depth_limit 
-            best_node = self.analyze_subnodes(best_node.state, dtemp)
-
-            for node in nodes:
-                if node is None:
-                    print("None")
-                else:
-
-                    # Set the node's score to the best score of its subnodes.
-                    best_node = self.analyze_subnodes(node.state, depth_limit - 1)
-                    if best_node is None:
-                        continue 
-                    node.score = best_node.score
-                    # If we have a good move, the just use it.
-                    if node.score > 0.7:
-                        return node'''
-
-        # Prevent the ants form getting stuck when all moves
-        # are equal.
-        #random.shuffle(nodes)
-
-        # Return the best node.
-        #if nodes != []:
-         #   return self.evaluate_nodes(nodes, state.whoseTurn == self.playerId)
-
     def getPlacement(self, currentState):
         """
         getPlacement:
@@ -451,9 +303,12 @@ class AIPlayer(Player):
                      buildType [int])
         """
 
-        depth = 1
-        move = self.get_best_move(currentState, depth)
+##        depth = 1
+        move = self.expand(currentState, 0)
+        print( move)
 
+        if move is None:
+            return Move(c.END, None, None)
         return move
 
     def getAttack(self, currentState, attackingAnt, enemyLocations):
@@ -474,22 +329,88 @@ class AIPlayer(Player):
         # Attack a random enemy.
         return enemyLocations[random.randint(0, len(enemyLocations) - 1)]
 
-class Node(object):
+
+
+     ##
+    #expand                 <!-- RECURSIVE -->
+    #Description: searches for the best move to optimize resulting state at given depth
+    # prunes moves and general search space to save time
+    #
+    #Parameters:
+    #   state - current state of the game
+    #   depth - starting depth for search
+    #
+    #Return: overall score of nodes if the depth is greater than 0
+    # else, when depth is 0, returns the best move
+    ##
+    def expand(self, state, depth, currentNode=None):
+        # make a node for the starting parent of all
+        if currentNode is None:
+            currentNode = Node(nextState = state)
+        
+        me = self.playerId
+        #get all possible moves for the current player
+        moves = utils.listAllLegalMoves(state)
+        
+        #generate a list of all next game states
+        gameStates = []
+        for m in moves:
+            gameStates.append(utils.getNextStateAdversarial(state,m))
+
+        # get the nodes, and trim to either min or max top moves
+        nodes = []
+        lim = len(gameStates)#min(len(gameStates), 5)
+        for n in range(lim):
+            score = self.score_state(gameStates[n])
+            nodes.append(Node(moves[n], gameStates[n], score, currentNode))
+        
+        #check if the current depth is less than the depth limite and then recurse
+        if depth < self.dLim:
+##            for s in nodes:
+##                s.score = self.expand(s.nextState, depth + 1, s)
+
+
+
+            if state.whoseTurn == self.playerId:
+                for node in nodes:
+                    if abs(node.upper - currentNode.lower) > 1:
+                        #dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
+                        score = self.expand(node.nextState, depth + 1,node)
+                        if score > currentNode.lower:
+                            currentNode.lower = score
+            else:
+                for node in nodes:
+                    if abs(node.lower - currentNode.upper) > 1:
+                        #dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
+                        score = self.expand(node.nextState, depth + 1,node)
+                        if score < currentNode.upper:
+                            currentNode.upper = score
+
+
+        # return the score or best move
+        best_node = self.evaluate_nodes(nodes, self.playerId == state.whoseTurn)
+        print( best_node.score)
+        if depth > 0:
+            return best_node.score
+        else:
+            return best_node.move
+
+
+##
+#class to represent node containing info for next state given a move
+##
+class Node:
     """
     Simple class for a search tree Node.
 
     Each Node requires a Move and a GameState. If a score is not
     provided, then one is calculated with AIPlayer.score_state().
     """
-
-    #__slots__ = ('move', 'state', 'score', 'parent')
-
-    def __init__(self, move, state, parent=None, score=None,):
-        self.move = move
-        self.state = state
+    def __init__(self, move = None, nextState = None, score = 0, parent = None):
+        self.move = move;
+        self.nextState = nextState
         self.score = score
-        #if score is None:
-         #   self.score = AIPlayer.score_state(state)
         self.parent = parent
-        self.upper = 2
+        
         self.lower = -2
+        self.upper = 2
