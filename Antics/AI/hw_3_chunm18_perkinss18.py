@@ -304,12 +304,12 @@ class AIPlayer(Player):
         """
 
 ##        depth = 1
-        move = self.expand(currentState, 0)
-        print( move)
+        node = self.expand(currentState, 0)
 
-        if move is None:
+        if node is None:
             return Move(c.END, None, None)
-        return move
+        print(node.move)
+        return node.move
 
     def getAttack(self, currentState, attackingAnt, enemyLocations):
         """
@@ -355,13 +355,18 @@ class AIPlayer(Player):
         #generate a list of all next game states
         gameStates = []
         for m in moves:
-            gameStates.append(utils.getNextStateAdversarial(state,m))
+            if m is Move(c.END, None, None): 
+                moves.remove(m)
+            else:
+                gameStates.append(utils.getNextStateAdversarial(state,m))
 
         # get the nodes, and trim to either min or max top moves
         nodes = []
         lim = len(gameStates)#min(len(gameStates), 5)
         for n in range(lim):
             score = self.score_state(gameStates[n])
+            if score <= .001:
+                continue 
             nodes.append(Node(moves[n], gameStates[n], score, currentNode))
         
         #check if the current depth is less than the depth limite and then recurse
@@ -369,32 +374,44 @@ class AIPlayer(Player):
 ##            for s in nodes:
 ##                s.score = self.expand(s.nextState, depth + 1, s)
 
-
-
             if state.whoseTurn == self.playerId:
                 for node in nodes:
-                    if abs(node.upper - currentNode.lower) > 1:
+                    if self.get_overlap(node.range, currentNode.range) > 0:
+                        #print(node.range)
+                        #print(currentNode.range)
                         #dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
-                        score = self.expand(node.nextState, depth + 1,node)
-                        if score > currentNode.lower:
-                            currentNode.lower = score
+                        currentNode = self.expand(node.nextState, depth + 1, node)
+                        #print("Not Pruned")
+                        if currentNode.score > currentNode.range[0]:
+                            currentNode.range[0] = currentNode.score
+                    else:
+                        print("Pruned")
             else:
                 for node in nodes:
-                    if abs(node.lower - currentNode.upper) > 1:
+                    if self.get_overlap(node.range, currentNode.range) > 0:
                         #dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
-                        score = self.expand(node.nextState, depth + 1,node)
-                        if score < currentNode.upper:
-                            currentNode.upper = score
-
+                        currentNode = self.expand(node.nextState, depth + 1,node)
+                        if currentNode.score < currentNode.range[1]:
+                            currentNode.range[1] = currentNode.score
+                        #print("Not Pruned")
+                    else:
+                        print("Pruned")
 
         # return the score or best move
         best_node = self.evaluate_nodes(nodes, self.playerId == state.whoseTurn)
-        print( best_node.score)
-        if depth > 0:
-            return best_node.score
+        currentNode.score = best_node.score
+        currentNode.move = best_node.move
+        print(currentNode.range)
+        print(currentNode.move)
+        #print( best_node.score)
+        return currentNode
+        '''if depth > 0:
+            return currentNode
         else:
-            return best_node.move
+            return currentNode.child'''
 
+    def get_overlap(self, range1, range2):
+        return max(0, min(range1[1], range2[1]) - max(range1[0], range2[0]))
 
 ##
 #class to represent node containing info for next state given a move
@@ -406,11 +423,12 @@ class Node:
     Each Node requires a Move and a GameState. If a score is not
     provided, then one is calculated with AIPlayer.score_state().
     """
-    def __init__(self, move = None, nextState = None, score = 0, parent = None):
+    def __init__(self, move = None, nextState = None, score = 0, parent = None, child = None):
         self.move = move;
         self.nextState = nextState
         self.score = score
         self.parent = parent
-        
-        self.lower = -2
-        self.upper = 2
+        self.range = [-2,2]
+        self.child = child
+        #self.lower = -2
+        #self.upper = 2
