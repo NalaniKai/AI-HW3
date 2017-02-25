@@ -355,19 +355,23 @@ class AIPlayer(Player):
         #generate a list of all next game states
         gameStates = []
         for m in moves:
-            if m is Move(c.END, None, None): 
-                moves.remove(m)
-            else:
-                gameStates.append(utils.getNextStateAdversarial(state,m))
+            gameStates.append(utils.getNextStateAdversarial(state,m))
 
         # get the nodes, and trim to either min or max top moves
         nodes = []
         lim = len(gameStates)#min(len(gameStates), 5)
         for n in range(lim):
             score = self.score_state(gameStates[n])
-            if score <= .001:
-                continue 
             nodes.append(Node(moves[n], gameStates[n], score, currentNode))
+
+        descending = False
+
+        if state.whoseTurn == self.playerId:
+            descending=True
+
+        nodes.sort(key=lambda node: node.score, reverse = descending)
+        if len(nodes) > 10:
+            nodes = nodes[:len(nodes) / 5]
         
         #check if the current depth is less than the depth limite and then recurse
         if depth < self.dLim:
@@ -403,7 +407,7 @@ class AIPlayer(Player):
         currentNode.move = best_node.move
         print(currentNode.range)
         print(currentNode.move)
-        #print( best_node.score)
+        print( currentNode.score)
         return currentNode
         '''if depth > 0:
             return currentNode
