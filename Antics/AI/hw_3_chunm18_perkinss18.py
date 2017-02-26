@@ -62,12 +62,15 @@ class AIPlayer(Player):
         enemy_food = enemy_inv.foodCount
         food_difference = abs(our_food - enemy_food)
         our_anthill = our_inv.getAnthill()
-        our_tunnel = our_inv.getTunnels()[0]
+        our_tunnel = our_inv.getTunnels()
+        food_drop_offs = []
+        if len(our_tunnel) != 0:
+            food_drop_offs.append(our_tunnel[0].coords)
+        food_drop_offs.append(our_anthill.coords)
         enemy_anthill = enemy_inv.getAnthill()
         our_queen = our_inv.getQueen()
         enemy_queen = enemy_inv.getQueen()
-        food_drop_offs = [our_tunnel.coords]
-        food_drop_offs.append(our_anthill.coords)
+        food = utils.getConstrList(state, None, (c.FOOD,))
 
         # Total points possible
         total_points = 1
@@ -96,7 +99,7 @@ class AIPlayer(Player):
                 good_points += food_difference * 200  # 800
 
         # Carrying food is good
-        food_move = 100
+        food_move = 150
         our_workers = [ant for ant in our_inv.ants if ant.type == c.WORKER]
 
         # Food drop off points
@@ -105,8 +108,15 @@ class AIPlayer(Player):
 
         # Depositing food is even better!
         if len(dropping_off) != 0:
-            total_points += food_move * 30  
-            good_points += food_move * 30  
+            total_points += food_move * 130  
+            good_points += food_move * 130  
+
+        picking_up = [
+            ant for ant in our_workers if ant.coords in food]
+
+        if len(picking_up) != 0:
+            total_points += food_move * 50  
+            good_points += food_move * 50  
 
         # Worker movement
         for ant in our_workers:
@@ -119,15 +129,26 @@ class AIPlayer(Player):
                     total_points += 60  
             if ant.carrying and ant not in dropping_off:
                 # Good if carrying ants move toward a drop off.
-                total_points += food_move  
+                total_points += food_move 
                 good_points += food_move 
 
-                for dist in range(2, 4):
+                for dist in range(2, 6):
                     for dropoff in food_drop_offs:
                         if ((abs(ant_x - dropoff[0]) < dist) and
                                 (abs(ant_y - dropoff[1]) < dist)):
                             good_points += food_move - (dist * 25)
                             total_points += food_move - (dist * 25)
+            else:
+                if food != []:      
+                    for f in food:  
+                        x_dist = abs(ant_x - f.coords[0])
+                        y_dist = abs(ant_y - f.coords[1]) 
+
+                        # weighted more if closer to food
+                        for dist in range(2, 7):
+                            if x_dist < dist and y_dist < dist:
+                                good_points += 70 - (dist * 10)
+                                total_points += 70 - (dist * 10)
 
         # Raw ant numbers comparison
         total_points += (len(our_inv.ants) + len(enemy_inv.ants)) * 10  
@@ -136,7 +157,7 @@ class AIPlayer(Player):
         # Weighted ant types
         # Workers, first 3 are worth 10, the rest are penalized
         enemy_workers = [ant for ant in enemy_inv.ants if ant.type == c.WORKER]
-        if len(our_workers) <= 1:#3:
+        if len(our_workers) <= 2:#3:
             total_points += len(our_workers) * 10  
             good_points += len(our_workers) * 10  
         else:
@@ -158,7 +179,7 @@ class AIPlayer(Player):
         for ant in our_offense:
             ant_x = ant.coords[0]
             ant_y = ant.coords[1]
-            attack_move = 160  
+            attack_move = 200  
             good_points += UNIT_STATS[ant.type][c.COST] * 20
             total_points += UNIT_STATS[ant.type][c.COST] * 20
             # good if on enemy anthill
@@ -194,10 +215,10 @@ class AIPlayer(Player):
         total_points += (our_queen.health + enemy_queen.health) * 100
         good_points += our_queen.health * 100
         queen_coords = our_queen.coords
-        if queen_coords in food_drop_offs or queen_coords[1] > 2:
+        if queen_coords in food_drop_offs or queen_coords[1] > 2 or queen_coords in food:
             # Stay off food_drop_offs and away from the front lines.
             #return .001
-            total_points += 300
+            total_points += 80
 
         # queen attacks if under threat
         for enemy_ant in enemy_inv.ants:
@@ -304,12 +325,13 @@ class AIPlayer(Player):
         """
 
 ##        depth = 1
-        node = self.expand(currentState, 0)
-
-        if node is None:
+        node = Node(None, currentState)
+        node.beta = -2
+        node.alpha = 2
+        move = self.expand(node, self.dLim, True)
+        if move is None:
             return Move(c.END, None, None)
-        print(node.move)
-        return node.move
+        return move
 
     def getAttack(self, currentState, attackingAnt, enemyLocations):
         """
@@ -343,79 +365,179 @@ class AIPlayer(Player):
     #Return: overall score of nodes if the depth is greater than 0
     # else, when depth is 0, returns the best move
     ##
-    def expand(self, state, depth, currentNode=None):
+    def expand(self, node, depth, maxPlayer):
         # make a node for the starting parent of all
-        if currentNode is None:
-            currentNode = Node(nextState = state)
         
         me = self.playerId
         #get all possible moves for the current player
-        moves = utils.listAllLegalMoves(state)
+        moves = utils.listAllLegalMoves(node.nextState)
         
         #generate a list of all next game states
         gameStates = []
         for m in moves:
-            gameStates.append(utils.getNextStateAdversarial(state,m))
+            gameStates.append(self.getNextStateAdversarial(node.nextState,m))
 
         # get the nodes, and trim to either min or max top moves
-        nodes = []
-        lim = len(gameStates)#min(len(gameStates), 5)
-        for n in range(lim):
-            score = self.score_state(gameStates[n])
-            nodes.append(Node(moves[n], gameStates[n], score, currentNode))
+        children = []
+        for n in range(len(gameStates)):
+            score = self.score_state(gameStates[n])#score_state(gameStates[n])#
+            if score > .001:
+                children.append(Node(moves[n], gameStates[n], score, node))
 
-        descending = False
+        random.shuffle(children)
 
-        if state.whoseTurn == self.playerId:
-            descending=True
+        # if depth = 0 or node is terminal return heuristic
+        if depth == 0 or len(children) == 0:
+            node.score = self.score_state(node.nextState)#score_state(node.nextState)# 
+            return node.score
 
-        nodes.sort(key=lambda node: node.score, reverse = descending)
-        if len(nodes) > 10:
-            nodes = nodes[:len(nodes) / 5]
-        
-        #check if the current depth is less than the depth limite and then recurse
-        if depth < self.dLim:
-##            for s in nodes:
-##                s.score = self.expand(s.nextState, depth + 1, s)
-
-            if state.whoseTurn == self.playerId:
-                for node in nodes:
-                    if self.get_overlap(node.range, currentNode.range) > 0:
-                        #print(node.range)
-                        #print(currentNode.range)
-                        #dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
-                        currentNode = self.expand(node.nextState, depth + 1, node)
-                        #print("Not Pruned")
-                        if currentNode.score > currentNode.range[0]:
-                            currentNode.range[0] = currentNode.score
-                    else:
-                        print("Pruned")
-            else:
-                for node in nodes:
-                    if self.get_overlap(node.range, currentNode.range) > 0:
-                        #dtemp = depth_limit - 1 #if node.move.moveType == c.END else depth_limit
-                        currentNode = self.expand(node.nextState, depth + 1,node)
-                        if currentNode.score < currentNode.range[1]:
-                            currentNode.range[1] = currentNode.score
-                        #print("Not Pruned")
-                    else:
-                        print("Pruned")
-
-        # return the score or best move
-        best_node = self.evaluate_nodes(nodes, self.playerId == state.whoseTurn)
-        currentNode.score = best_node.score
-        currentNode.move = best_node.move
-        print(currentNode.range)
-        print(currentNode.move)
-        print( currentNode.score)
-        return currentNode
-        '''if depth > 0:
-            return currentNode
+        if maxPlayer:
+            node.score = -2
+            for child in children:
+                child.alpha = node.alpha
+                child.beta = node.beta 
+                node.score = max(node.score, self.expand(child, depth - 1, False))
+                if node.score >= node.beta:
+                    if depth == self.dLim:
+                        for bestchild in children:
+                            if bestchild.score == node.score:
+                                return bestchild.move
+                    return node.score
+                node.alpha = max(node.alpha, node.score)
+            if depth == self.dLim:
+                for bestchild in children:
+                    if bestchild.score == node.score:
+                        return bestchild.move
+            return node.score
         else:
-            return currentNode.child'''
+            node.score = 2
+            for child in children:
+                child.alpha = node.alpha
+                child.beta = node.beta 
+                node.score = min(node.score, self.expand(child, depth - 1, True))
+                if node.score <= node.alpha:
+                    return node.score
+                node.beta = min(node.beta, node.score)
+
+            return node.score
 
     def get_overlap(self, range1, range2):
         return max(0, min(range1[1], range2[1]) - max(range1[0], range2[0]))
+
+
+    def getNextStateAdversarial(self, currentState, move):
+        # variables I will need
+        nextState = self.getNextState(currentState, move)
+        myInv = utils.getCurrPlayerInventory(nextState)
+        myAnts = myInv.ants
+
+        # If an ant is moved update their coordinates and has moved
+        if move.moveType == c.MOVE_ANT:
+            startingCoord = move.coordList[0]
+            for ant in myAnts:
+                if ant.coords == startingCoord:
+                    ant.hasMoved = True
+        elif move.moveType == c.END:
+            for ant in myAnts:
+                ant.hasMoved = False
+            nextState.whoseTurn = 1 - currentState.whoseTurn;
+        return nextState
+
+    @staticmethod
+    def getNextState(currentState, move):
+        """
+        Version of genNextState with food carrying bug fixed.
+        """
+        # variables I will need
+        myGameState = currentState.fastclone()
+        myInv = utils.getCurrPlayerInventory(myGameState)
+        me = myGameState.whoseTurn
+        myAnts = myInv.ants
+
+        # If enemy ant is on my anthill or tunnel update capture health
+        myTunnels = myInv.getTunnels()
+        myAntHill = myInv.getAnthill()
+        for myTunnel in myTunnels:
+            ant = utils.getAntAt(myGameState, myTunnel.coords)
+            if ant is not None:
+                opponentsAnts = myGameState.inventories[not me].ants
+                if ant in opponentsAnts:
+                    myTunnel.captureHealth -= 1
+        if utils.getAntAt(myGameState, myAntHill.coords) is not None:
+            ant = utils.getAntAt(myGameState, myAntHill.coords)
+            opponentsAnts = myGameState.inventories[not me].ants
+            if ant in opponentsAnts:
+                myAntHill.captureHealth -= 1
+
+        # If an ant is built update list of ants
+        antTypes = [c.WORKER, c.DRONE, c.SOLDIER, c.R_SOLDIER]
+        if move.moveType == c.BUILD:
+            if move.buildType in antTypes:
+                ant = Ant(myInv.getAnthill().coords, move.buildType, me)
+                myInv.ants.append(ant)
+                # Update food count depending on ant built
+                if move.buildType == c.WORKER:
+                    myInv.foodCount -= 1
+                elif move.buildType == c.DRONE or move.buildType == c.R_SOLDIER:
+                    myInv.foodCount -= 2
+                elif move.buildType == c.SOLDIER:
+                    myInv.foodCount -= 3
+
+        # If a building is built update list of buildings and the update food
+        # count
+        if move.moveType == c.BUILD:
+            if move.buildType == c.TUNNEL:
+                building = Construction(move.coordList[0], move.buildType)
+                myInv.constrs.append(building)
+                myInv.foodCount -= 3
+
+        # If an ant is moved update their coordinates and has moved
+        if move.moveType == c.MOVE_ANT:
+            newCoord = move.coordList[len(move.coordList) - 1]
+            startingCoord = move.coordList[0]
+            for ant in myAnts:
+                if ant.coords == startingCoord:
+                    ant.coords = newCoord
+                    ant.hasMoved = False
+                    # If an ant is carrying food and ends on the anthill or tunnel
+                    # drop the food
+                    if ant.carrying and ant.coords == myInv.getAnthill().coords:
+                        myInv.foodCount += 1
+                        # ant.carrying = False
+                    for tunnels in myTunnels:
+                        if ant.carrying and (ant.coords == tunnels.coords):
+                            myInv.foodCount += 1
+                            # ant.carrying = False
+                    # If an ant doesn't have food and ends on the food grab
+                    # food
+                    if not ant.carrying:
+                        foods = utils.getConstrList(
+                            myGameState, None, (c.FOOD,))
+                        for food in foods:
+                            if food.coords == ant.coords:
+                                ant.carrying = True
+                    # If my ant is close to an enemy ant attack it
+                    adjacentTiles = utils.listAdjacent(ant.coords)
+                    for adj in adjacentTiles:
+                        # If ant is adjacent my ant
+                        if utils.getAntAt(myGameState, adj) is not None:
+                            closeAnt = utils.getAntAt(myGameState, adj)
+                            if closeAnt.player != me:  # if the ant is not me
+                                closeAnt.health = closeAnt.health - \
+                                    UNIT_STATS[ant.type][c.ATTACK]  # attack
+                                # If an enemy is attacked and looses all its health remove it from the other players
+                                # inventory
+                                if closeAnt.health <= 0:
+                                    enemyAnts = myGameState.inventories[
+                                        not me].ants
+                                    for enemy in enemyAnts:
+                                        if closeAnt.coords == enemy.coords:
+                                            myGameState.inventories[
+                                                not me].ants.remove(enemy)
+                                # If attacked an ant already don't attack any
+                                # more
+                                break
+        return myGameState
 
 ##
 #class to represent node containing info for next state given a move
@@ -432,7 +554,7 @@ class Node:
         self.nextState = nextState
         self.score = score
         self.parent = parent
-        self.range = [-2,2]
+        #self.range = [-2,2]
         self.child = child
-        #self.lower = -2
-        #self.upper = 2
+        self.beta = None
+        self.alpha = None
