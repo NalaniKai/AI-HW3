@@ -53,8 +53,8 @@ class AIPlayer(Player):
         Parameters:
             state - GameState to score.
         """
-        enemy_id = 1 - self.playerId #abs(state.whoseTurn - 1)
-        our_inv = state.inventories[self.playerId]#utils.getCurrPlayerInventory(state)
+        enemy_id = 1 - self.playerId 
+        our_inv = state.inventories[self.playerId]
         enemy_inv = [inv for inv in state.inventories if inv.player == enemy_id].pop()
         we_win = 1.0
         enemy_win = 0.0
@@ -89,14 +89,14 @@ class AIPlayer(Player):
             return enemy_win
 
         # Score food
-        total_points += (our_food + enemy_food) * 50  # 100
-        good_points += our_food * 50  # 100
+        total_points += (our_food + enemy_food) * 50  
+        good_points += our_food * 50  
 
         # Differences over, say, 3 are weighted heavier
         if food_difference > 3:
-            total_points += food_difference * 200  # 800
+            total_points += food_difference * 100  
             if our_food > enemy_food:
-                good_points += food_difference * 200  # 800
+                good_points += food_difference * 100  
 
         # Carrying food is good
         food_move = 150
@@ -108,8 +108,8 @@ class AIPlayer(Player):
 
         # Depositing food is even better!
         if len(dropping_off) != 0:
-            total_points += food_move * 130  
-            good_points += food_move * 130  
+            total_points += food_move * 80  
+            good_points += food_move * 80  
 
         picking_up = [
             ant for ant in our_workers if ant.coords in food]
@@ -125,8 +125,8 @@ class AIPlayer(Player):
             for enemy in enemy_inv.ants:
                 if ((abs(ant_x - enemy.coords[0]) > 3) and
                         (abs(ant_y - enemy.coords[1]) > 3)):
-                    good_points += 60 
-                    total_points += 60  
+                    good_points += 30 
+                    total_points += 30  
             if ant.carrying and ant not in dropping_off:
                 # Good if carrying ants move toward a drop off.
                 total_points += food_move 
@@ -179,7 +179,7 @@ class AIPlayer(Player):
         for ant in our_offense:
             ant_x = ant.coords[0]
             ant_y = ant.coords[1]
-            attack_move = 200  
+            attack_move = 150  
             good_points += UNIT_STATS[ant.type][c.COST] * 20
             total_points += UNIT_STATS[ant.type][c.COST] * 20
             # good if on enemy anthill
@@ -208,7 +208,7 @@ class AIPlayer(Player):
 
         # Stop building if we have more than 5 ants
         if len(our_inv.ants) > 5:
-            total_points += 300 
+            return .001 
 
         # Queen stuff
         # Queen healths, big deal, each HP is worth 100!
@@ -217,7 +217,6 @@ class AIPlayer(Player):
         queen_coords = our_queen.coords
         if queen_coords in food_drop_offs or queen_coords[1] > 2 or queen_coords in food:
             # Stay off food_drop_offs and away from the front lines.
-            #return .001
             total_points += 80
 
         # queen attacks if under threat
@@ -228,13 +227,13 @@ class AIPlayer(Player):
             y_dist = abs(queen_coords[1] - enemy_y)
 
             if (x_dist + y_dist) == 1:
-                good_points += 200  
-                total_points += 200 
+                good_points += 100  
+                total_points += 100 
 
         # Anthill stuff
         total_points += (our_anthill.captureHealth +
-                         enemy_anthill.captureHealth) * 200  
-        good_points += our_anthill.captureHealth * 200  
+                         enemy_anthill.captureHealth) * 100  
+        good_points += our_anthill.captureHealth * 100  
 
         return float(good_points) / float(total_points)
 
@@ -324,7 +323,6 @@ class AIPlayer(Player):
                      buildType [int])
         """
 
-##        depth = 1
         node = Node(None, currentState)
         node.beta = -2
         node.alpha = 2
@@ -396,25 +394,23 @@ class AIPlayer(Player):
             for child in children:
                 child.alpha = node.alpha
                 child.beta = node.beta 
-                node.score = max(node.score, self.expand(child, depth - 1, False))
+                node.score = max(node.score, self.expand(child, depth - 1, 
+                    child.nextState.whoseTurn == self.playerId))
                 if node.score >= node.beta:
                     if depth == self.dLim:
-                        for bestchild in children:
-                            if bestchild.score == node.score:
-                                return bestchild.move
+                        return self.evaluate_nodes(children, True).move
                     return node.score
                 node.alpha = max(node.alpha, node.score)
             if depth == self.dLim:
-                for bestchild in children:
-                    if bestchild.score == node.score:
-                        return bestchild.move
+                return self.evaluate_nodes(children, True).move
             return node.score
         else:
             node.score = 2
             for child in children:
                 child.alpha = node.alpha
                 child.beta = node.beta 
-                node.score = min(node.score, self.expand(child, depth - 1, True))
+                node.score = min(node.score, self.expand(child, depth - 1, 
+                    child.nextState.whoseTurn == self.playerId))
                 if node.score <= node.alpha:
                     return node.score
                 node.beta = min(node.beta, node.score)
@@ -554,7 +550,6 @@ class Node:
         self.nextState = nextState
         self.score = score
         self.parent = parent
-        #self.range = [-2,2]
         self.child = child
         self.beta = None
         self.alpha = None
