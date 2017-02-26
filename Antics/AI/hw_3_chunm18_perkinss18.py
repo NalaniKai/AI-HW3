@@ -35,7 +35,11 @@ class AIPlayer(Player):
         """
         super(AIPlayer, self).__init__(inputPlayerId, "Clever Name")
         self.dLim = 3
-        self.uLim = 7#not in use
+        self.searchMult = 2.5
+        self.searchLim = []#[1,2,4,7]#
+        for i in range(self.dLim+1):
+            self.searchLim.append((i)*self.searchMult)
+            
 
     #@staticmethod
     def score_state(self, state):
@@ -150,6 +154,10 @@ class AIPlayer(Player):
                                 good_points += 70 - (dist * 10)
                                 total_points += 70 - (dist * 10)
 
+        if len(our_workers) < 3:
+            good_points += 800
+            total_points += 800
+
         # Raw ant numbers comparison
         total_points += (len(our_inv.ants) + len(enemy_inv.ants)) * 10  
         good_points += len(our_inv.ants) * 10  
@@ -182,6 +190,15 @@ class AIPlayer(Player):
             attack_move = 150  
             good_points += UNIT_STATS[ant.type][c.COST] * 20
             total_points += UNIT_STATS[ant.type][c.COST] * 20
+
+            if ant.type == c.R_SOLDIER:
+                good_points += 300
+                total_points += 300
+
+            if ant.type == c.DRONE:
+                good_points -= UNIT_STATS[ant.type][c.COST] * 20
+                total_points -= UNIT_STATS[ant.type][c.COST] * 20
+            
             # good if on enemy anthill
             if ant.coords == enemy_anthill.coords:
                 total_points += 100
@@ -326,7 +343,8 @@ class AIPlayer(Player):
         node = Node(None, currentState)
         node.beta = -2
         node.alpha = 2
-        move = self.expand(node, self.dLim, True)
+        move = self.expand(node, self.dLim, True, -2,2)
+        print(move)
         if move is None:
             return Move(c.END, None, None)
         return move
@@ -363,58 +381,123 @@ class AIPlayer(Player):
     #Return: overall score of nodes if the depth is greater than 0
     # else, when depth is 0, returns the best move
     ##
-    def expand(self, node, depth, maxPlayer):
+    def expand(self, node, depth, maxPlayer,a,b):
+##        if depth > 1:
+##            print(depth)
         # make a node for the starting parent of all
         
         me = self.playerId
+
+        # if depth = 0 or node is terminal return heuristic
+        if depth == 0:
+            node.score = self.score_state(node.nextState)
+            return node.score
+        
         #get all possible moves for the current player
         moves = utils.listAllLegalMoves(node.nextState)
+
+        badmoves = []
+        for i in moves:
+            if (i.moveType == c.BUILD and i.buildType == c.TUNNEL) or \
+               (i.moveType == c.MOVE_ANT and not utils.isPathOkForQueen(i.coordList) and\
+                utils.getAntAt(node.nextState, i.coordList[0]).type == c.WORKER):
+                badmoves.append(i)
+        for m in badmoves:
+            moves.remove(m)
+            
+##        if depth == 1:
+##            random.shuffle(moves)
+##            moves = moves[0:len(moves)/2]
         
         #generate a list of all next game states
         gameStates = []
         for m in moves:
             gameStates.append(self.getNextStateAdversarial(node.nextState,m))
 
+        
+
         # get the nodes, and trim to either min or max top moves
+##        children = []
+##        for n in range(len(gameStates)):
+##            score = self.score_state(gameStates[n])#score_state(gameStates[n])#
+##            if score > .001:
+##                children.append(Node(moves[n], gameStates[n], score, node))
+##
+##        random.shuffle(children)
+        childrentemp = []
         children = []
         for n in range(len(gameStates)):
-            score = self.score_state(gameStates[n])#score_state(gameStates[n])#
-            if score > .001:
-                children.append(Node(moves[n], gameStates[n], score, node))
+            score = self.score_state(gameStates[n])
+            childrentemp.append([score,Node(moves[n], gameStates[n], score, node)])
+            children.append(Node(moves[n], gameStates[n], score, node))
 
+
+        sorted(childrentemp, key=lambda x: x[0])
+        if self.playerId == node.nextState.whoseTurn:
+            childrentemp = reversed(childrentemp)
+        children = []
+        for n in childrentemp:
+            if len(children) >= self.searchLim[depth]:
+                break
+            children.append(n[1])
         random.shuffle(children)
 
         # if depth = 0 or node is terminal return heuristic
-        if depth == 0 or len(children) == 0:
-            node.score = self.score_state(node.nextState)#score_state(node.nextState)# 
+        if len(children) == 0:
+            node.score = self.score_state(node.nextState)
             return node.score
 
         if maxPlayer:
             node.score = -2
             for child in children:
-                child.alpha = node.alpha
-                child.beta = node.beta 
-                node.score = max(node.score, self.expand(child, depth - 1, 
-                    child.nextState.whoseTurn == self.playerId))
-                if node.score >= node.beta:
+                v = self.expand(child, depth - 1, child.nextState.whoseTurn == self.playerId, a,b)
+                node.score = max(v, node.score)
+                if node.score >= b:
+##                    print("pruned max %d" %depth)
                     if depth == self.dLim:
-                        return self.evaluate_nodes(children, True).move
+                        return childnode.move
                     return node.score
-                node.alpha = max(node.alpha, node.score)
+                a = max(a, child.score)
             if depth == self.dLim:
                 return self.evaluate_nodes(children, True).move
-            return node.score
+            return self.evaluate_nodes(children, True).score#node.score
         else:
             node.score = 2
             for child in children:
-                child.alpha = node.alpha
-                child.beta = node.beta 
-                node.score = min(node.score, self.expand(child, depth - 1, 
-                    child.nextState.whoseTurn == self.playerId))
-                if node.score <= node.alpha:
+                v = self.expand(child, depth - 1, child.nextState.whoseTurn == self.playerId,a,b)
+                node.score = min(v, node.score)
+                if node.score <= a:
+##                    print("pruned min %d" %depth)
                     return node.score
-                node.beta = min(node.beta, node.score)
+                b = min(b, node.score)
+            return self.evaluate_nodes(children, False).score#node.score
 
+######        if maxPlayer:
+######            node.score = -2
+######            for child in children:
+######                child.alpha = node.alpha
+######                child.beta = node.beta 
+######                node.score = max(node.score, self.expand(child, depth - 1, 
+######                    child.nextState.whoseTurn == self.playerId))
+######                if node.score >= node.beta:
+######                    if depth == self.dLim:
+######                        return self.evaluate_nodes(children, True).move
+######                    return node.score
+######                node.alpha = max(node.alpha, node.score)
+######            if depth == self.dLim:
+######                return self.evaluate_nodes(children, True).move
+######            return node.score
+######        else:
+######            node.score = 2
+######            for child in children:
+######                child.alpha = node.alpha
+######                child.beta = node.beta 
+######                node.score = min(node.score, self.expand(child, depth - 1, 
+######                    child.nextState.whoseTurn == self.playerId))
+######                if node.score <= node.alpha:
+######                    return node.score
+######                node.beta = min(node.beta, node.score)
+    
             return node.score
 
     def get_overlap(self, range1, range2):
