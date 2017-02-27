@@ -405,9 +405,9 @@ class AIPlayer(Player):
         for m in badmoves:
             moves.remove(m)
             
-##        if depth == 1:
-##            random.shuffle(moves)
-##            moves = moves[0:len(moves)/2]
+        # prune moves randomly
+        random.shuffle(moves)
+        moves = moves[0:(len(moves)*depth)/self.dLim]
         
         #generate a list of all next game states
         gameStates = []
