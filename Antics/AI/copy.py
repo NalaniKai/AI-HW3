@@ -33,7 +33,7 @@ class AIPlayer(Player):
         Parameters:
             inputPlayerId - The id to give the new player (int)
         """
-        super(AIPlayer, self).__init__(inputPlayerId, "Clever Name")
+        super(AIPlayer, self).__init__(inputPlayerId, "Copy Name")
         self.dLim = 3               #depth limit
         self.searchMult = 2.5       #generate search limits for depths
         self.searchLim = []         #search limit size control
